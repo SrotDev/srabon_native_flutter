@@ -1,6 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:srabon/pages/appbar.dart';
+import 'package:srabon/pages/course_content.dart';
 import 'package:srabon/pages/drawer.dart';
+import 'package:srabon/pages/ApiService.dart';
+
+ApiService auth = ApiService();
+Future<void> saveToken(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('jwt_token', token);
+}
+
+Future<String?> getToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('jwt_token');
+}
+
+Future<void> logout() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('jwt_token');
+}
 
 List<String> subjectsList = [
   'Physics',
@@ -19,6 +39,33 @@ class CoursesPage extends StatefulWidget {
 }
 
 class _CoursesPageState extends State<CoursesPage> {
+  bool _loading = true;
+
+  List<dynamic>? courses;
+  List<dynamic>? showcourses;
+
+  Future<void> _loadTokenAndSet() async {
+    final token = await getToken();
+    if (token != null) {
+      auth.setToken(token);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _loadTokenAndSet();
+    courses = await auth.getCourses();
+    showcourses = courses;
+    setState(() {
+      _loading = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isBangla = false;
@@ -26,6 +73,7 @@ class _CoursesPageState extends State<CoursesPage> {
     final screenWidth = MediaQuery.of(context).size.width;
 
     String selectedSubject = "All";
+    String searchText = "";
 
     void toggleLanguage(bool value) {
       setState(() {
@@ -33,6 +81,45 @@ class _CoursesPageState extends State<CoursesPage> {
       });
     }
 
+    if (_loading) {
+      return Scaffold(
+        appBar: CustomAppBar(
+          isBangla: isBangla,
+          onLanguageToggle: toggleLanguage,
+        ),
+        resizeToAvoidBottomInset: true,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.asset("assets/main.jpg", fit: BoxFit.cover),
+            ),
+
+            // Semi-transparent overlay (optional)
+            Positioned.fill(
+              child: Container(color: Color.fromARGB(3, 28, 172, 163)),
+            ),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SpinKitChasingDots(color: Colors.blue),
+                  SizedBox(height: 20),
+                  Text(
+                    "Loading...",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.black,
+                      //fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       appBar: CustomAppBar(
         isBangla: isBangla,
@@ -93,17 +180,26 @@ class _CoursesPageState extends State<CoursesPage> {
                         ),
                       ),
                       onChanged: (value) {
-                        // setState(() {
-                        //   currentMessage = value;
-                        //   isSendEnabled = value.trim().isNotEmpty;
-                        // });
+                        setState(() {
+                          searchText = value.trim();
+                          if (searchText.isEmpty) {
+                            showcourses = courses;
+                          } else {
+                            showcourses = courses?.where((course) {
+                              final title =
+                                  course['parent']['title']?.toLowerCase() ??
+                                  '';
+                              return title.contains(searchText.toLowerCase());
+                            }).toList();
+                          }
+                        });
                       },
                     ),
                   ),
                 ),
 
                 Padding(
-                  padding: const EdgeInsets.only(top: 10.0, bottom:10),
+                  padding: const EdgeInsets.only(top: 10.0, bottom: 10),
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 5),
                     decoration: BoxDecoration(
@@ -140,28 +236,40 @@ class _CoursesPageState extends State<CoursesPage> {
                       onChanged: (value) {
                         setState(() {
                           selectedSubject = value!;
+                          if (selectedSubject == "All") {
+                            showcourses = courses;
+                          } else {
+                            showcourses = courses?.where((course) {
+                              final subject = course['parent']['subject'] ?? '';
+                              return subject == selectedSubject;
+                            }).toList();
+                          }
+                          // Optionally, also filter by searchText if you want both filters together:
+                          if (searchText.isNotEmpty) {
+                            showcourses = showcourses?.where((course) {
+                              final title =
+                                  course['parent']['title']?.toLowerCase() ??
+                                  '';
+                              return title.contains(searchText.toLowerCase());
+                            }).toList();
+                          }
                         });
-                        // Optionally filter your courses here
                       },
                     ),
                   ),
                 ),
                 Expanded(
-                  child: ListView(
-                    children: [
-                      CourseContainer(
-                        name: "Sustainable Farming Techniques",
-                        subject: "Agriculture",
-                        description: "Cultivating a Greener Future",
-                      ),
-                      CourseContainer(
-                        name: "Exploring the World of English Literature",
-                        subject: "English",
-                        description:
-                            "A Journey Through Stories, Poems, and Plays",
-                      ),
-                      // Add more CourseContainer widgets here...
-                    ],
+                  child: ListView.builder(
+                    itemCount: showcourses?.length ?? 0,
+                    itemBuilder: (context, index) {
+                      final course = showcourses![index];
+                      return CourseContainer(
+                        name: course['parent']['title'] ?? '',
+                        subject: course['parent']['subject'] ?? '',
+                        description: course['parent']['subtitle'] ?? '',
+                        id: course['courseID']
+                      );
+                    },
                   ),
                 ),
               ],
@@ -178,11 +286,13 @@ class CourseContainer extends StatefulWidget {
   final String name;
   final String subject;
   final String description;
+  final String id;
 
   CourseContainer({
     required this.name,
     required this.subject,
     required this.description,
+    required this.id
   });
 
   @override
@@ -195,39 +305,31 @@ class _CourseContainerState extends State<CourseContainer> {
     String? imageurl = "";
     switch (widget.subject) {
       case "Physics":
-        imageurl =
-            "https://images.unsplash.com/photo-1633493702341-4d04841df53b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxQaHlzaWNzfGVufDB8fHx8MTc0OTQ4NDk0NXww&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/1.jfif";
         break;
       case "Chemistry":
-        imageurl =
-            "https://images.unsplash.com/photo-1532094349884-543bc11b234d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxDaGVtaXN0cnl8ZW58MHx8fHwxNzQ5NDcxMzU2fDA&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/2.jfif";
         break;
       case "Math":
-        imageurl =
-            "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxNYXRofGVufDB8fHx8MTc0OTQ4NDgzOXww&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/3.jfif";
         break;
       case "History":
-        imageurl =
-            "https://images.unsplash.com/photo-1473163928189-364b2c4e1135?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxIaXN0b3J5fGVufDB8fHx8MTc0OTUyNDU4M3ww&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/4.jfif";
         break;
       case "Economics":
-        imageurl =
-            "https://images.unsplash.com/photo-1612178991541-b48cc8e92a4d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxFY29ub21pY3N8ZW58MHx8fHwxNzQ5NDcxMzU2fDA&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/5.jfif";
         break;
       case "Biology":
-        imageurl =
-            "https://images.unsplash.com/photo-1631556097152-c39479bbff93?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxCaW9sb2d5fGVufDB8fHx8MTc0OTU2NDcwMnww&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/6.jfif";
         break;
       case "Agriculture":
-        imageurl =
-            "https://images.unsplash.com/photo-1560493676-04071c5f467b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxBZ3JpY3VsdHVyZXxlbnwwfHx8fDE3NDk1NjUyMzF8MA&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/7.jfif";
         break;
       case "English":
-        imageurl =
-            "https://images.unsplash.com/photo-1543109740-4bdb38fda756?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NTQyNTN8MHwxfHNlYXJjaHwxfHxFbmdsaXNofGVufDB8fHx8MTc0OTUyNTczNXww&ixlib=rb-4.1.0&q=80&w=1080";
+        imageurl = "assets/8.jfif";
         break;
       default:
-        imageurl = "";
+        imageurl = "assets/other.jpg";
         break;
     }
     return Padding(
@@ -249,10 +351,10 @@ class _CourseContainerState extends State<CourseContainer> {
                   topRight: Radius.circular(20),
                 ),
                 child: Container(
-                  height: 200,
+                  height: 225,
                   decoration: BoxDecoration(
                     image: DecorationImage(
-                      image: NetworkImage(imageurl),
+                      image: AssetImage(imageurl),
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -304,7 +406,7 @@ class _CourseContainerState extends State<CourseContainer> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 17.0),
               child: Text(
-                "A Journey Through Stories, Poems, and Plays",
+                widget.description,
                 style: TextStyle(color: Colors.grey, fontSize: 16),
                 textAlign: TextAlign.left,
               ),
@@ -315,9 +417,9 @@ class _CourseContainerState extends State<CourseContainer> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      const Color.fromARGB(255, 25, 219, 193),
-                      const Color.fromARGB(255, 89, 248, 211),
-                    ],
+                                        const Color(0xFF72397C),
+                                        const Color(0xFFBA4098),
+                                      ],
                   ),
                   borderRadius: BorderRadius.circular(30),
                 ),
@@ -329,7 +431,7 @@ class _CourseContainerState extends State<CourseContainer> {
                       Navigator.of(context).pushReplacement(
                         PageRouteBuilder(
                           transitionDuration: Duration(milliseconds: 400),
-                          pageBuilder: (_, __, ___) => CoursesPage(),
+                          pageBuilder: (_, __, ___) => CourseContent(id: widget.id),
                           transitionsBuilder: (_, animation, __, child) {
                             return FadeTransition(
                               opacity: animation,
@@ -346,7 +448,7 @@ class _CourseContainerState extends State<CourseContainer> {
                       ),
                       child: Text(
                         "V I E W    C O U R S E",
-                        style: TextStyle(color: Colors.white, fontSize: 14),
+                        style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),

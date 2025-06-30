@@ -2,11 +2,57 @@
 
 import 'package:flutter/material.dart';
 import 'package:srabon/pages/appbar.dart';
+import 'package:srabon/pages/dashboard.dart';
 import 'package:srabon/pages/drawer.dart';
 import 'package:srabon/pages/getstarted.dart';
 import 'package:srabon/pages/login.dart';
 import 'package:srabon/pages/splashscreen.dart';
+import 'package:srabon/pages/ApiService.dart';
 import 'dart:ui';
+import 'package:shared_preferences/shared_preferences.dart';
+
+final Map<String, List<String>> subjectTitles = {
+  "Physics": ["Physics - Fundamentals", "Physics - Advanced Concepts"],
+  "Chemistry": ["Intro to Chemistry", "Advanced Chemistry Techniques"],
+  "Math": ["Mathematics - Basics", "Advanced Calculus"],
+  "History": ["World History - Overview", "Modern History"],
+  "Economics": ["Microeconomics", "Macroeconomics Principles"],
+  "Biology": ["Intro to Biology", "Genetics and Evolution"],
+  "Agriculture": ["Agriculture 101", "Sustainable Farming Techniques"],
+  "English": ["English Literature", "Advanced English Grammar"],
+};
+
+ApiService auth = ApiService();
+
+Future<void> saveToken(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('jwt_token', token);
+}
+
+Future<String?> getToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('jwt_token');
+}
+
+Future<void> logout() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('jwt_token');
+}
+
+Future<void> submitCoursesForSubjects(List<String> subjects) async {
+  for (final subject in subjects) {
+    final courseTitles = subjectTitles[subject] ?? [];
+    for (final title in courseTitles) {
+      final success = await auth.addCourseJson(title, subject);
+      if (!success) {
+        // You can throw or handle the error as you wish
+        //print('❌ Failed to add course: $title for $subject');
+      } else {
+        print('✅ Course "$title" for $subject added.');
+      }
+    }
+  }
+}
 
 List<String> questions = [
   "What's Your Name?",
@@ -28,10 +74,12 @@ class PreInfo extends StatefulWidget {
 class _PreInfoState extends State<PreInfo> {
   int pos = 0;
   bool isBangla = false;
+  bool _hasUpdated = false;
 
   void setPos(int newPos) {
     setState(() {
       pos = newPos;
+      if (newPos == 3) _hasUpdated = false;
     });
   }
 
@@ -43,9 +91,55 @@ class _PreInfoState extends State<PreInfo> {
   }
 
   @override
+  void didUpdateWidget(covariant PreInfo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Not needed here, logic will be in build
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTokenAndSet();
+  }
+
+  Future<void> _loadTokenAndSet() async {
+    final token = await getToken();
+    if (token != null) {
+      auth.setToken(token);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
+
+    if (pos == 3 && !_hasUpdated) {
+      _hasUpdated = true; // Prevent multiple calls
+      Future.microtask(() async {
+        // Call your backend function here
+        bool success = await auth.updateStudentInfo(
+          name!,
+          level!,
+          selectedSubjects,
+        );
+        if (success) {
+          await submitCoursesForSubjects(selectedSubjects);
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              transitionDuration: Duration(milliseconds: 400),
+              pageBuilder: (_, __, ___) => Dashboard(),
+              transitionsBuilder: (_, animation, __, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+            ),
+          );
+        } else {
+          // handle error
+        }
+      });
+    }
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: CustomAppBar(
@@ -59,7 +153,7 @@ class _PreInfoState extends State<PreInfo> {
           children: [
             Positioned.fill(
               child: Image.asset(
-                "assets/main.jpg", // Your background image
+                "assets/main.png", // Your background image
                 fit: BoxFit.cover,
               ),
             ),
@@ -68,79 +162,95 @@ class _PreInfoState extends State<PreInfo> {
             ),
 
             // Scrollable main content
-            SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Center(
-                      child: Container(
-                        width: screenWidth * 0.9,
-                        padding: EdgeInsets.symmetric(
-                          vertical: screenHeight * 0.04,
-                          horizontal: screenWidth * 0.05,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: const Color.fromARGB(255, 222, 232, 232),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 30.0,
-                              offset: Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Progress bar
-                            Padding(
-                              padding: EdgeInsets.symmetric(
-                                vertical: screenHeight * 0.015,
+            Center(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    bottom: 40,
+                    left: 23,
+                    right: 23,
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Center(
+                        child: Container(
+                          width: screenWidth * 0.9,
+                          padding: EdgeInsets.symmetric(
+                            vertical: screenHeight * 0.04,
+                            horizontal: screenWidth * 0.05,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            color: const Color.fromARGB(255, 222, 232, 232),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 30.0,
+                                offset: Offset(0, 5),
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(4, (index) {
-                                  return Container(
-                                    width: screenWidth * 0.15,
-                                    height: 2,
-                                    margin: EdgeInsets.symmetric(horizontal: 4),
-                                    decoration: BoxDecoration(
-                                      color: pos >= index
-                                          ? Colors.black
-                                          : Colors.grey,
-                                      boxShadow: index == 3 && pos == 3
-                                          ? [
-                                              BoxShadow(
-                                                color: Color.fromARGB(
-                                                  253,
-                                                  207,
-                                                  1,
-                                                  1,
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Progress bar
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: screenHeight * 0.015,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: List.generate(4, (index) {
+                                    return Container(
+                                      width: screenWidth * 0.15,
+                                      height: 2,
+                                      margin: EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: pos >= index
+                                            ? Colors.black
+                                            : Colors.grey,
+                                        boxShadow: index == 3 && pos == 3
+                                            ? [
+                                                BoxShadow(
+                                                  color: Color.fromARGB(
+                                                    253,
+                                                    207,
+                                                    1,
+                                                    1,
+                                                  ),
+                                                  blurRadius: 30.0,
+                                                  offset: Offset(0, 5),
                                                 ),
-                                                blurRadius: 30.0,
-                                                offset: Offset(0, 5),
-                                              ),
-                                            ]
-                                          : [],
-                                    ),
-                                  );
-                                }),
+                                              ]
+                                            : [],
+                                      ),
+                                    );
+                                  }),
+                                ),
                               ),
-                            ),
 
-                            SizedBox(height: screenHeight * 0.03),
+                              //SizedBox(height: screenHeight * 0.01),
 
-                            // Placeholder (dynamic question area)
-                            PlaceHolder(pos: pos, setPos: setPos),
+                              // Placeholder (dynamic question area)
+                              PlaceHolder(pos: pos, setPos: setPos),
 
-                            SizedBox(height: screenHeight * 0.03),
-                          ],
+                              SizedBox(height: screenHeight * 0.01),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Image.asset(
+                  "assets/over.png", // Your background image
+                  //fit: BoxFit.cover,
                 ),
               ),
             ),
@@ -148,7 +258,7 @@ class _PreInfoState extends State<PreInfo> {
         ),
       ),
 
-      drawer: CustomDrawer()
+      drawer: CustomDrawer(),
     );
   }
 }
@@ -178,19 +288,20 @@ class PlaceHolder extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const SizedBox(height: 30),
               Text(
-                "Wonderful, $name!",
+                "Wonderful!",
                 style: const TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
               const Padding(
                 padding: EdgeInsets.all(20.0),
                 child: Text(
-                  "I’m setting up your profile as we speak…",
+                  "Please wait as I create your profile...",
                   style: TextStyle(fontSize: 24),
                   textAlign: TextAlign.center,
                 ),
@@ -256,45 +367,57 @@ class _Ques1State extends State<Ques1> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(height: 30),
+          //SizedBox(height: 20),
           Text(
             "Let's Get Started!",
-            style: TextStyle(
-              fontSize: width * 0.08,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontSize: 35, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 50),
+          SizedBox(height: 80),
           Text(
             "What's Your Name?",
             style: TextStyle(
-              fontSize: width * 0.06,
-              fontWeight: FontWeight.bold,
+              fontSize: 23,
+              //fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 30),
+          SizedBox(height: 25),
           TextField(
             decoration: InputDecoration(
               hintText: name == null ? "Enter your name" : name,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: const Color(0xFFD870B6), // Your desired color
+                  width: 2, // Optional: border width
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: const Color(0xFFD870B6), // Your desired color
+                  width: 2,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: Colors.blue, // Color when focused
+                  width: 2,
+                ),
               ),
               contentPadding: EdgeInsets.symmetric(horizontal: 20),
             ),
             textAlign: TextAlign.center,
             onChanged: (value) => setState(() => name = value),
           ),
-          SizedBox(height: 40),
+          SizedBox(height: 60),
           Center(
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    const Color.fromARGB(255, 25, 219, 193),
-                    const Color.fromARGB(255, 89, 248, 211),
-                  ],
+                  colors: [const Color(0xFF72397C), const Color(0xFFBA4098)],
                 ),
                 borderRadius: BorderRadius.circular(30),
               ),
@@ -348,14 +471,14 @@ class _Ques2State extends State<Ques2> {
       child: Column(
         children: [
           Text(
-            "Hello, ${name ?? 'there'}!",
+            "Hi, ${name ?? 'there'}!",
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 20),
           Text(
-            "Which class do you read in?",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            "Which grade are you in?",
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.normal),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 30),
@@ -369,7 +492,7 @@ class _Ques2State extends State<Ques2> {
                 onTap: () => setState(() => level = cls),
                 child: CircleAvatar(
                   radius: 35,
-                  backgroundColor: isSelected ? Colors.teal : Colors.grey[300],
+                  backgroundColor: isSelected ? const Color(0xFF183059) : const Color(0xFF84E6F8),
                   child: Text(
                     cls.toString(),
                     style: TextStyle(
@@ -384,15 +507,12 @@ class _Ques2State extends State<Ques2> {
           ),
           SizedBox(height: 40),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      const Color.fromARGB(255, 169, 207, 197),
-                      const Color.fromARGB(255, 172, 241, 225),
-                    ],
+                    colors: [const Color(0xFFA698CD), const Color(0xFF8AD8F0)],
                   ),
                   borderRadius: BorderRadius.circular(30),
                 ),
@@ -407,12 +527,12 @@ class _Ques2State extends State<Ques2> {
                     },
                     child: Padding(
                       padding: EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 12,
+                        horizontal: 28,
+                        vertical: 11,
                       ),
                       child: Text(
                         "B A C K",
-                        style: TextStyle(color: Colors.black, fontSize: 16),
+                        style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ),
                   ),
@@ -421,10 +541,7 @@ class _Ques2State extends State<Ques2> {
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      const Color.fromARGB(255, 25, 219, 193),
-                      const Color.fromARGB(255, 89, 248, 211),
-                    ],
+                    colors: [const Color(0xFF72397C), const Color(0xFFBA4098)],
                   ),
                   borderRadius: BorderRadius.circular(30),
                 ),
@@ -447,8 +564,8 @@ class _Ques2State extends State<Ques2> {
                     },
                     child: Padding(
                       padding: EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 12,
+                        horizontal: 28,
+                        vertical: 11,
                       ),
                       child: Text(
                         "N E X T",
@@ -510,7 +627,7 @@ class _Ques3State extends State<Ques3> {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 20),
+          SizedBox(height: 40),
           GridView.count(
             crossAxisCount: 2,
             childAspectRatio: 2.8,
@@ -534,9 +651,9 @@ class _Ques3State extends State<Ques3> {
                   padding: EdgeInsets.symmetric(vertical: 12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    color: isSelected ? Colors.teal : Colors.grey[300],
+                    color: isSelected ? const Color(0xFFCB429F) : Colors.grey[300],
                     boxShadow: isSelected
-                        ? [BoxShadow(color: Colors.greenAccent, blurRadius: 5)]
+                        ? [BoxShadow(color: const Color(0xFFCB429F), blurRadius: 5)]
                         : [],
                   ),
                   alignment: Alignment.center,
@@ -551,18 +668,15 @@ class _Ques3State extends State<Ques3> {
               );
             }).toList(),
           ),
-          SizedBox(height: 30),
+          //SizedBox(height: 30),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Center(
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        const Color.fromARGB(255, 214, 214, 214),
-                        const Color.fromARGB(255, 242, 255, 252),
-                      ],
+                      colors: [const Color(0xFFA698CD), const Color(0xFF8AD8F0)],
                     ),
                     borderRadius: BorderRadius.circular(30),
                   ),
@@ -577,12 +691,12 @@ class _Ques3State extends State<Ques3> {
                       },
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
+                          horizontal: 28,
+                          vertical: 11,
                         ),
                         child: Text(
                           "B A C K",
-                          style: TextStyle(color: Colors.black, fontSize: 16),
+                          style: TextStyle(color: Colors.white, fontSize: 16),
                         ),
                       ),
                     ),
@@ -594,10 +708,7 @@ class _Ques3State extends State<Ques3> {
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        const Color.fromARGB(255, 25, 219, 193),
-                        const Color.fromARGB(255, 89, 248, 211),
-                      ],
+                      colors: [const Color(0xFF72397C), const Color(0xFFBA4098)],
                     ),
                     borderRadius: BorderRadius.circular(30),
                   ),
@@ -622,12 +733,12 @@ class _Ques3State extends State<Ques3> {
                       },
                       child: Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
+                          horizontal: 28,
+                          vertical: 11,
                         ),
                         child: Text(
                           "N E X T",
-                          style: TextStyle(color: Colors.black, fontSize: 16),
+                          style: TextStyle(color: Colors.white, fontSize: 16),
                         ),
                       ),
                     ),

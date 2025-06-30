@@ -22,7 +22,7 @@ class _CustomAppBarState extends State<CustomAppBar> {
         Container(
           width: double.infinity,
           child: Image.asset(
-            'assets/main.jpg',
+            'assets/main.png',
             fit: BoxFit.cover,
           ),
         ),
@@ -41,21 +41,21 @@ class _CustomAppBarState extends State<CustomAppBar> {
             ]),
           actions: [
             
-            Padding(
-              padding: const EdgeInsets.only(right:20.0),
-              child: Row(
-                children: [
-                  Text('EN ', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  Switch(
-                    value: widget.isBangla,
-                    onChanged: widget.onLanguageToggle,
-                    activeColor: Colors.green,
-                    inactiveThumbColor: Colors.blue,
-                  ),
-                  Text(' BN', style: TextStyle(color: Colors.white, fontSize: 16)),
-                ],
-              ),
-            ),
+            // Padding(
+            //   padding: const EdgeInsets.only(right:20.0),
+            //   child: Row(
+            //     children: [
+            //       Text('EN ', style: TextStyle(color: Colors.white, fontSize: 16)),
+            //       Switch(
+            //         value: widget.isBangla,
+            //         onChanged: widget.onLanguageToggle,
+            //         activeColor: Colors.green,
+            //         inactiveThumbColor: Colors.blue,
+            //       ),
+            //       Text(' BN', style: TextStyle(color: Colors.white, fontSize: 16)),
+            //     ],
+            //   ),
+            // ),
             
           ],
         ),

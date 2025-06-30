@@ -1,8 +1,34 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:srabon/pages/appbar.dart';
+import 'package:srabon/pages/courses_page.dart';
 import 'package:srabon/pages/drawer.dart';
+import 'package:srabon/pages/ApiService.dart';
+
 ///import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+ApiService auth = ApiService();
+String? subject;
+String? title;
+
+Future<void> saveToken(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('jwt_token', token);
+}
+
+Future<String?> getToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('jwt_token');
+}
+
+Future<void> logout() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('jwt_token');
+}
 
 class CourseCreatePage extends StatefulWidget {
   CourseCreatePage({super.key});
@@ -12,6 +38,20 @@ class CourseCreatePage extends StatefulWidget {
 }
 
 class _CourseCreatePageState extends State<CourseCreatePage> {
+  bool _loading = false;
+
+  Future<void> _loadTokenAndSet() async {
+    final token = await getToken();
+    if (token != null) {
+      auth.setToken(token);
+    }
+  }
+
+  void initState() {
+    super.initState();
+    _loadTokenAndSet();
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isBangla = false;
@@ -41,12 +81,17 @@ class _CourseCreatePageState extends State<CourseCreatePage> {
           ),
           Center(
             child: Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.only(
+                left: 20.0,
+                right: 20,
+                top: 20,
+                bottom: 70,
+              ),
               child: Container(
                 padding: const EdgeInsets.all(30),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black26,
@@ -63,7 +108,7 @@ class _CourseCreatePageState extends State<CourseCreatePage> {
                     Text(
                       "Create AI Generated Course",
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 28,
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
@@ -78,31 +123,82 @@ class _CourseCreatePageState extends State<CourseCreatePage> {
                     Padding(
                       padding: const EdgeInsets.only(top: 50.0),
                       child: Center(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                const Color.fromARGB(255, 25, 219, 193),
-                                const Color.fromARGB(255, 89, 248, 211),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
+                        child: GestureDetector(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                        const Color(0xFF72397C),
+                                        const Color(0xFFBA4098),
+                                      ],
+                              ),
                               borderRadius: BorderRadius.circular(30),
-                              onTap: () {},
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 36,
-                                  vertical: 14,
-                                ),
-                                child: Text(
-                                  "G E N E R A T E   C O U R S E",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () async {
+                                  showDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (context) => BackdropFilter(
+                                      filter: ImageFilter.blur(
+                                        sigmaX: 3,
+                                        sigmaY: 3,
+                                      ),
+                                      child: Center(
+                                        child: SpinKitChasingDots(
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                  if (title != null && subject != null) {
+                                    var result = await auth.addCourseJson(
+                                      title!,
+                                      subject!,
+                                    );
+                                  } else {
+                                    //notify
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text("Couldn't add course."),
+                                      ),
+                                    );
+                                  }
+                                  Navigator.of(context).pop();
+
+                                  Navigator.of(context).pushReplacement(
+                                    PageRouteBuilder(
+                                      transitionDuration: Duration(
+                                        milliseconds: 400,
+                                      ),
+                                      pageBuilder: (_, __, ___) =>
+                                          CoursesPage(),
+                                      transitionsBuilder:
+                                          (_, animation, __, child) {
+                                            return FadeTransition(
+                                              opacity: animation,
+                                              child: child,
+                                            );
+                                          },
+                                    ),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(30),
+
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 12,
+                                  ),
+                                  child: Text(
+                                    "G E N E R A T E   C O U R S E",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -127,6 +223,7 @@ class _CourseCreatePageState extends State<CourseCreatePage> {
 class InputThings extends StatelessWidget {
   final screenHeight;
   final screenWidth;
+
   InputThings({required this.screenHeight, required this.screenWidth});
 
   @override
@@ -164,6 +261,7 @@ class InputThings extends StatelessWidget {
                 //controller: _controller,
                 minLines: 1,
                 maxLines: 2, // Allow multiline input
+
                 decoration: InputDecoration(
                   hintText: 'Enter Course Subject',
                   hintStyle: TextStyle(color: Colors.grey),
@@ -174,10 +272,7 @@ class InputThings extends StatelessWidget {
                   ),
                 ),
                 onChanged: (value) {
-                  // setState(() {
-                  //   currentMessage = value;
-                  //   isSendEnabled = value.trim().isNotEmpty;
-                  // });
+                  subject = value;
                 },
               ),
             ),
@@ -213,10 +308,7 @@ class InputThings extends StatelessWidget {
                   ),
                 ),
                 onChanged: (value) {
-                  // setState(() {
-                  //   currentMessage = value;
-                  //   isSendEnabled = value.trim().isNotEmpty;
-                  // });
+                  title = value;
                 },
               ),
             ),

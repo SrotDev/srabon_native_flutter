@@ -5,7 +5,32 @@ import 'dart:ui';
 import 'package:srabon/pages/dashboard.dart';
 import 'package:srabon/pages/drawer.dart';
 
-//final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+import 'package:srabon/pages/ApiService.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+
+//final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>()
+
+///import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+ApiService auth = ApiService();
+String? subject;
+String? title;
+
+Future<void> saveToken(String token) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('jwt_token', token);
+}
+
+Future<String?> getToken() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('jwt_token');
+}
+
+Future<void> logout() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.remove('jwt_token');
+}
 
 class MessageData {
   final String message;
@@ -23,26 +48,28 @@ class Chat extends StatefulWidget {
 class _ChatState extends State<Chat> {
   bool isBangla = false;
   String name = "John";
+  bool _isLoading = false;
 
-  final List<MessageData> sampleMessages = [
-    MessageData(message: "Hi there!", isAI: false),
-    MessageData(
-      message:
-          "Hello! How can I assistsdvasdvaf adfvadvcvawefcwcewedc you today?",
-      isAI: true,
-    ),
-    MessageData(message: "What's the weather like today?", isAI: false),
-    MessageData(message: "It's sunny with a high of 27°C.", isAI: true),
-    MessageData(message: "Thanks!", isAI: false),
-    MessageData(message: "You're welcome!", isAI: true),
-    MessageData(message: "Thanks!", isAI: false),
-    MessageData(message: "You're welcome!", isAI: true),
-    MessageData(message: "Thanks!", isAI: false),
-    MessageData(message: "You're !", isAI: true),
-  ];
+  late String first;
+  late List<MessageData> sampleMessages;
 
   String currentMessage = "";
   bool isSendEnabled = false;
+
+  Future<void> _loadTokenAndSet() async {
+    final token = await getToken();
+    if (token != null) {
+      auth.setToken(token);
+    }
+  }
+
+  void initState() {
+    super.initState();
+    _loadTokenAndSet();
+    first =
+        "Hey, $name! I'm your friend আভা. I'm here to support you with your studies, clarify doubts, or just have a chat. Ask me anything to get started! 🚀";
+    sampleMessages = [MessageData(message: first, isAI: true)];
+  }
 
   void toggleLanguage(bool value) {
     setState(() {
@@ -91,7 +118,7 @@ class _ChatState extends State<Chat> {
           children: [
             Positioned.fill(
               child: Image.asset(
-                "assets/main.jpg", // Your background image
+                "assets/main.png", // Your background image
                 fit: BoxFit.cover,
               ),
             ),
@@ -172,33 +199,33 @@ class _ChatState extends State<Chat> {
                           ),
                           child: Column(
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.all(0.0),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: const Color.fromARGB(
-                                      255,
-                                      180,
-                                      255,
-                                      215,
-                                    ),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
+                              // Padding(
+                              //   padding: const EdgeInsets.all(0.0),
+                              //   child: Container(
+                              //     decoration: BoxDecoration(
+                              //       color: const Color.fromARGB(
+                              //         255,
+                              //         180,
+                              //         255,
+                              //         215,
+                              //       ),
+                              //       borderRadius: BorderRadius.circular(20),
+                              //     ),
 
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(10.0),
-                                    child: Text(
-                                      "Hey, $name! I'm your friend আভা. I'm here to support you with your studies, clarify doubts, or just have a chat. Ask me anything to get started! 🚀",
-                                      style: TextStyle(),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              //     child: Padding(
+                              //       padding: const EdgeInsets.all(10.0),
+                              //       child: Text(
+                              //         "Hey, $name! I'm your friend আভা. I'm here to support you with your studies, clarify doubts, or just have a chat. Ask me anything to get started! 🚀",
+                              //         style: TextStyle(),
+                              //         textAlign: TextAlign.center,
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
                               // Message(message: sampleMessages[0].message, isAI: false)
                               ConstrainedBox(
                                 constraints: BoxConstraints(
-                                  maxHeight: screenHeight * 0.56,
+                                  maxHeight: screenHeight * 0.70,
                                   minWidth: screenWidth * 0.9,
                                 ),
                                 child: ChatBody(
@@ -235,7 +262,9 @@ class _ChatState extends State<Chat> {
                                 minLines: 1,
                                 maxLines: 4, // Allow multiline input
                                 decoration: InputDecoration(
-                                  hintText: 'Write a message...',
+                                  hintText: (_isLoading
+                                      ? 'আভা is Typing...'
+                                      : 'Write a message...'),
                                   border: InputBorder.none,
                                   contentPadding: EdgeInsets.symmetric(
                                     horizontal: 10,
@@ -257,20 +286,40 @@ class _ChatState extends State<Chat> {
                             iconSize: 30,
                             icon: Icon(Icons.send),
                             onPressed: isSendEnabled
-                                ? () {
+                                ? () async {
+                                    final userMessage = currentMessage;
                                     addMessage(
                                       sampleMessages,
                                       MessageData(
-                                        message: currentMessage,
+                                        message: userMessage,
                                         isAI: false,
                                       ),
                                     );
                                     _controller.clear();
                                     setState(() {
                                       currentMessage = "";
-                                      isSendEnabled =
-                                          false; // Disable send button
+                                      isSendEnabled = false;
+                                      _isLoading =
+                                          true; // Show loading indicator
                                     });
+
+                                    String? aiResponse = await auth
+                                        .chatWithHistory(userMessage);
+
+                                    setState(() {
+                                      _isLoading =
+                                          false; // Hide loading indicator
+                                    });
+
+                                    if (aiResponse != null) {
+                                      addMessage(
+                                        sampleMessages,
+                                        MessageData(
+                                          message: aiResponse,
+                                          isAI: true,
+                                        ),
+                                      );
+                                    }
                                   }
                                 : null, // disables the button
                           ),
@@ -293,7 +342,7 @@ class _ChatState extends State<Chat> {
         ),
       ),
 
-      drawer: CustomDrawer()
+      drawer: CustomDrawer(),
     );
   }
 }
@@ -309,7 +358,7 @@ class Message extends StatelessWidget {
     return Align(
       alignment: isAI ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
-        padding: EdgeInsets.all(10),
+        padding: EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         margin: EdgeInsets.symmetric(vertical: 7, horizontal: 8),
         decoration: BoxDecoration(
           color: isAI ? Colors.white : const Color.fromARGB(255, 159, 239, 215),
@@ -322,7 +371,10 @@ class Message extends StatelessWidget {
             ),
           ],
         ),
-        child: Text(message, style: TextStyle(fontSize: 16)),
+        child: MarkdownBody(
+          data: message,
+          styleSheet: MarkdownStyleSheet(p: TextStyle(fontSize: 16, fontWeight: FontWeight.normal)),
+        ),
       ),
     );
   }
